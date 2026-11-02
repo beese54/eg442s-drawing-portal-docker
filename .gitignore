@@ -6,3 +6,5 @@ __pycache__/
 *.pem
 ~$*
 tasks/
+# raw AWS screenshots (show account ID / home IP); redacted copies live in presentation/
+/screenshot_*.png

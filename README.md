@@ -10,7 +10,7 @@ checks on them, packaged with **Docker**, published to **Docker Hub**, and deplo
 | Dockerfile | [`Dockerfile`](Dockerfile) |
 | Docker Compose file | [`docker-compose.yml`](docker-compose.yml) |
 | Docker image | https://hub.docker.com/r/dockerflocker456/drawing-portal |
-| AWS deployment | `http://<EC2-public-IPv4>` (filled in on demo day: the Learner Lab IP changes per session) |
+| AWS deployment | Deployed and verified on 2 Nov 2026 at `http://54.234.52.243` (EC2 t3.micro, us-east-1). The Learner Lab IP changes per session; see slides 8–11 for evidence |
 | Architecture diagram + commands | `presentation/EG442S_DrawingPortal_Docker.pptx` |
 
 ---
@@ -197,4 +197,5 @@ docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/drawing-portal:1.0
 | Browser on port 80, app on port 8000 | Port mapping `-p 80:8000` on EC2 (`8080:8000` locally, to avoid clashing with anything on port 80) |
 | Swagger `/docs` page was blank | The app's strict Content-Security-Policy blocks CDN scripts. Kept the security header and used `/api/health` for checks instead |
 | Learner Lab stops EC2 after each session | `systemctl enable docker` + `--restart unless-stopped` bring the app back automatically. Re-check the new public IP |
-| Site not reachable at first (Lab 7b 3.4.9) | Added the HTTP 80 inbound rule to the security group |
+| Image must match the instance CPU | The image was built on an x86 PC, so the instance uses an x86 AMI on t3.micro (an Arm t4g instance would not run it) |
+| Screenshots going into a public repo | Cropped out the AWS account ID and Learner Lab username, and masked my home IP in the SSH rule |
