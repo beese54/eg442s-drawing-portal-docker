@@ -1,0 +1,36 @@
+# Docker Compose file for the Schematic Drawing Portal (single-container app)
+#
+#   docker compose up -d --build   -> build the image and start the app
+#   docker compose ps              -> see the running service
+#   docker compose logs -f         -> follow the logs
+#   docker compose down            -> stop and remove the container + network
+#
+# Open http://localhost:8080 once it is running.
+
+services:
+  web:
+    # Build from the Dockerfile in this folder, and tag the result with the
+    # Docker Hub name so `docker compose push` can publish it.
+    build:
+      context: .
+      args:
+        APP_VERSION: "1.0"
+    image: dockerflocker456/drawing-portal:1.0
+    container_name: drawing-portal
+    ports:
+      - "8080:8000"          # host port 8080 -> container port 8000
+    environment:
+      # Runtime settings read by backend/app/config.py.
+      # APP_VERSION is shown at /api/health, an easy way to prove the variable
+      # reached the container. MAX_IMAGE_BYTES caps image uploads (5 MB here).
+      - APP_VERSION=1.0-compose
+      - MAX_IMAGE_BYTES=5242880
+    networks:
+      - portal-net
+    restart: unless-stopped
+    # No volumes: drawings live in the browser only, nothing is saved on the
+    # server, so the container is stateless and needs no persistent storage.
+
+networks:
+  portal-net:
+    driver: bridge

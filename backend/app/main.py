@@ -1,0 +1,122 @@
+import threading
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.config import settings
+from app.request_logging import RequestLoggingMiddleware, configure_logging
+from app.routers import health, symbols, evaluate, export
+
+# Every log line, uvicorn's included, as JSON on stdout (H4).
+configure_logging()
+
+# The image runs on Alpine (musl), which gives a new thread a 128 KiB stack;
+# glibc gives 8 MiB, and CPython's recursion guard assumes the larger one. With
+# the musl default, deeply nested input parsed in a worker thread (Starlette's
+# threadpool) overflows the C stack and segfaults the whole server instead of
+# raising RecursionError. Set before any worker thread exists. It reserves
+# address space, not memory. See tests/test_thread_stack.py.
+threading.stack_size(8 * 1024 * 1024)
+
+# None removes the route entirely, so the request falls through to the static
+# mount and gets its 404. Development sets ENABLE_API_DOCS=1 (see config.py).
+_docs = settings.enable_api_docs
+app = FastAPI(
+    title="Schematic Drawing Portal API",
+    version=settings.app_version,
+    docs_url="/docs" if _docs else None,
+    redoc_url="/redoc" if _docs else None,
+    openapi_url="/openapi.json" if _docs else None,
+)
+
+# Cross-origin access is OFF unless a deployment lists origins in
+# ALLOWED_ORIGINS (empty by default; audit F3, fixed in 1.1.2). The app does
+# not need any: this process serves the frontend too (the static mount below),
+# and in development the Vite server proxies /api, so every request the app
+# makes is same-origin, and browsers never apply CORS to those. A listed origin
+# is echoed back exactly, never "*". Only GET and POST exist, so only those
+# may be preflighted. See tests/test_cors.py.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.origins_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+
+    # A CORS fallback used to sit here, adding Access-Control-Allow-Origin: *
+    # whenever CORSMiddleware had not. It served the retired split deployment
+    # (frontend and API on different origins, where a symbol image cached
+    # without CORS headers was reused for an <img crossorigin> load). Removed
+    # in 1.1.2: same-origin requests need no CORS headers, and it re-added "*"
+    # for exactly the origins CORSMiddleware had refused.
+
+    # ── Security headers ─────────────────────────────────────────────────────
+    # nosniff is the one that matters for this service specifically:
+    # /api/symbols/{id}/image serves image/svg+xml, and an SVG rendered as a
+    # DOCUMENT (direct navigation, not via <img>) executes script in this
+    # origin. Since 1.1.5 the CSP below also forbids script in that document;
+    # nosniff stays as the first layer. The symbol library is baked into the container image and the
+    # write API was removed on 2026-08-04, so this guards against a future
+    # committed SVG rather than a live exposure.
+    #
+    # Strict-Transport-Security is deliberately NOT set: this lab deployment
+    # serves plain HTTP on the EC2 public IP, and HSTS only applies over HTTPS.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
+    # Content-Security-Policy: the browser refuses anything this page did not
+    # come with (H2, 1.1.5; before that only img-src and object-src were set).
+    # - script-src / style-src 'self': only the bundled files. No inline code,
+    #   no eval, no CDN. The frontend's two inline <style> blocks moved to
+    #   src/index.css, and an ESLint rule keeps JSX <style> out. React's
+    #   style={{}} props go through the CSSOM, which CSP does not restrict.
+    # - img-src 'self' data: is the browser-enforced half of the import stamp
+    #   guard. The three title-block stamps are assigned to img.src and the
+    #   import path restricts them to data: URLs
+    #   (frontend/src/utils/importValidation.ts); this holds even if that code
+    #   regresses. 'self' covers /api/symbols/{id}/image and public/*.svg.
+    # - connect-src 'self': fetch/XHR only to this API.
+    # - object-src 'none', base-uri 'none', form-action 'none' and
+    #   frame-ancestors 'none' (which X-Frame-Options DENY also covers for old
+    #   browsers): no plugins, no <base> rewriting, no form posts, no framing.
+    # The policy also covers an SVG opened directly as a document.
+    # Pinned in tests/test_security_headers.py.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+    # The app uses none of these browser features, so nothing on this origin
+    # (including injected code) may ask for them.
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    return response
+
+
+# Added last, so it wraps every middleware above: one JSON line per request,
+# timed end to end, with the X-Request-ID it returns (H4). See
+# app/request_logging.py for what it deliberately leaves out.
+app.add_middleware(RequestLoggingMiddleware)
+
+app.include_router(health.router, prefix="/api")
+app.include_router(symbols.router, prefix="/api/symbols")
+app.include_router(evaluate.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
+
+# Only present in the combined image (root Dockerfile copies the built
+# frontend into ./static/). In development the Vite dev server serves the
+# frontend instead, so this directory is absent and the backend is API-only. Mounted last so it can
+# never shadow the /api/* routes or FastAPI's own /docs, /openapi.json, etc.
+if settings.static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(settings.static_dir), html=True), name="static")

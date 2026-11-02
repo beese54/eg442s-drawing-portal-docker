@@ -1,0 +1,94 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+
+_DEFAULT_SYMBOLS_PATH = str(Path(__file__).parent.parent / "symbols")
+_DEFAULT_STATIC_PATH = str(Path(__file__).parent.parent / "static")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    symbols_path: str = _DEFAULT_SYMBOLS_PATH
+    static_path: str = _DEFAULT_STATIC_PATH
+    # Origins (comma-separated) allowed to call the API cross-origin. Empty by
+    # default: the app is same-origin everywhere it runs, so none are needed.
+    allowed_origins: str = ""
+    # Baked into the image at build time (Dockerfile ARGs, set by
+    # docker-publish.yml) and reported by /api/health, so the running pod can
+    # say exactly which build it is. Unset means a local or hand-built image.
+    app_version: str = "dev"
+    git_commit: str = "unknown"
+    # /docs, /redoc and /openapi.json. Off unless asked for (H1, 1.1.4): they
+    # run third-party CDN script on this origin and give anyone a ready-made
+    # console against production. Development turns them on (docker-compose.yml,
+    # start.sh). See tests/test_api_docs.py.
+    enable_api_docs: bool = False
+
+    # ── Request limits ──────────────────────────────────────────────────────
+    # /api/evaluate and /api/export/docx are unauthenticated and publicly
+    # reachable, so a single request must not be able to exhaust the pod.
+    #
+    # Env-overridable on purpose: the safe ceiling depends on the container's
+    # memory limit (a t3.micro EC2 instance has 1 GiB in total).
+
+    # build_adjacency's proximity pass is O(total_ports²) with an O(elements²)
+    # outer loop. Measured worst case at these caps: ~1.4s. Raising
+    # max_total_ports is the change that costs the most — it is quadratic.
+    max_elements: int = 1000
+    max_pipes: int = 2000
+    max_total_ports: int = 4000
+
+    # Encoded upload ceiling, and the decoded-pixel ceiling enforced before
+    # Pillow allocates. 25M px x 3 bytes after .convert("RGB") is ~75MB.
+    # Pillow's own default (~89.5M px, ~268MB) is above what this pod
+    # survives, so it cannot be relied on — see image_annotator.py.
+    max_image_bytes: int = 10 * 1024 * 1024
+    max_image_pixels: int = 25_000_000
+
+    # DOCX export: every crop is held in memory for the life of the request,
+    # so the total is what actually bounds memory, not the per-file size.
+    max_report_rows: int = 1000
+    max_crops: int = 200
+    max_total_crop_bytes: int = 32 * 1024 * 1024
+    # Per-crop ceiling as well as the cumulative one. The cumulative cap alone
+    # still lets a single crop claim the whole budget in one allocation.
+    max_crop_bytes: int = 8 * 1024 * 1024
+
+    # Text form fields are json.loads()'d in full before any structural cap can
+    # run, so the caps above bound counts but never bytes. These bound the parse.
+    #
+    # metadata_json is the larger of the two because it carries images: the
+    # title block holds up to three base64 stamps, each permitted 4MB by
+    # frontend/src/utils/importValidation.ts MAX_DATA_URL_LEN. Measured in
+    # characters rather than bytes — the payload is already in memory by the
+    # time it is visible here, so this bounds the parse, not the transfer. A
+    # true request-body limit belongs at the ingress, which this app does not
+    # control (same boundary as _validate_image_upload).
+    max_metadata_chars: int = 20 * 1024 * 1024
+    max_manifest_chars: int = 4 * 1024 * 1024
+
+    @property
+    def symbols_dir(self) -> Path:
+        return Path(self.symbols_path)
+
+    @property
+    def static_dir(self) -> Path:
+        return Path(self.static_path)
+
+    @property
+    def default_symbols_dir(self) -> Path:
+        return self.symbols_dir / "default"
+
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.symbols_dir / "manifest.json"
+
+    @property
+    def origins_list(self) -> list[str]:
+        # Drops blanks: "" must mean "no origins", not [""].
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+
+settings = Settings()

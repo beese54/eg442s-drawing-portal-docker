@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="6.0 6.0 52.0 52.0" width="64" height="64">
+  <!-- Circle body (DWAT0106) -->
+  <circle cx="32" cy="32" r="24" fill="white" stroke="#1a1a1a" stroke-width="2.5"/>
+  <!-- WH label -->
+  <text x="32" y="33" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#1a1a1a">WH</text>
+</svg>

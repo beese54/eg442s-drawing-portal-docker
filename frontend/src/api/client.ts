@@ -1,0 +1,47 @@
+import axios from 'axios';
+import type { EvaluationResponse } from '../types/evaluation';
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+export const apiClient = axios.create({
+  baseURL: BASE_URL,
+});
+
+export const evaluationApi = {
+  evaluate: async (
+    formData: FormData,
+  ): Promise<EvaluationResponse> => {
+    const res = await fetch(`${BASE_URL}/api/evaluate`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<EvaluationResponse>;
+  },
+};
+
+export const exportApi = {
+  exportDocx: async (formData: FormData): Promise<Blob> => {
+    const res = await fetch(`${BASE_URL}/api/export/docx`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.blob();
+  },
+};
+
+export const symbolsApi = {
+  list: () => apiClient.get('/api/symbols'),
+  // Encoded: a symbolId can come from an imported drawing file, and unencoded
+  // "../" or "?" in it would steer the request to another same-origin path.
+  // All 64 shipped ids are URL-safe, so encoding changes none of them.
+  getImageUrl: (symbolId: string) =>
+    `${BASE_URL}/api/symbols/${encodeURIComponent(symbolId)}/image`,
+};

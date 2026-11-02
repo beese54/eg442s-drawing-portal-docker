@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Supply stub from top -->
+  <line x1="32" y1="0" x2="32" y2="12" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <!-- Square body -->
+  <rect x="8" y="12" width="48" height="48" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+  <!-- X diagonals -->
+  <line x1="8" y1="12" x2="56" y2="60" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="56" y1="12" x2="8" y2="60" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

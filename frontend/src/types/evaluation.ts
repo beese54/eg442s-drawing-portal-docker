@@ -1,0 +1,38 @@
+export interface ComplianceIssue {
+  status: 'FAIL' | 'WARN';
+  text: string;
+  element_ids: string[];
+}
+
+export interface CheckResult {
+  check_id: string;
+  title: string;
+  status: 'PASS' | 'FAIL' | 'WARN' | 'SKIP';
+  summary: string;
+  detail: string[];
+  table?: WelsRow[] | null;
+  elements_of_interest?: Array<{ element_id: string; label: string; color: string }>;
+  issues?: ComplianceIssue[];
+}
+
+export interface WelsRow {
+  element_id: string;
+  name: string;
+  ticks: number | null;
+  design_flow: number | null;
+  unit: string;
+  compliant: boolean | null;
+  note?: string | null;
+}
+
+export interface EvaluationResponse {
+  check1_backflow: CheckResult;
+  check2_supply_mode: CheckResult;
+  check3_water_efficiency: CheckResult;
+  check4_tank_pump: CheckResult;
+  check5_long_bath: CheckResult;
+  check6_hot_water: CheckResult;
+  check7_section3_pipes: CheckResult;
+  check8_highest_fitting: CheckResult;
+  annotated_image_b64: string | null;
+}
